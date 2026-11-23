@@ -1,0 +1,29 @@
+{
+  "name": "ESC_Backend",
+  "type": "module",
+  "scripts": {
+    "build": "js-compute-runtime ./src/index.ts ./bin/main.wasm",
+    "start": "fastly compute serve",
+    "deploy": "fastly compute publish"
+  },
+  "dependencies": {
+    "@fastly/hono-fastly-compute": "^0.3.10",
+    "@fastly/js-compute": "^3.43.1",
+    "@prisma/adapter-pg": "^7.10.1",
+    "@prisma/client": "^7.10.1",
+    "dotenv": "^18.0.10",
+    "hono": "^4.13.16",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@fastly/cli": "^15.4.0",
+    "@types/pg": "^8.23.1",
+    "prisma": "^7.10.1",
+    "tsx": "^4.23.15"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "prisma@7.10.1": true,
+    "@prisma/engines@7.10.1": true
+  }
+}
