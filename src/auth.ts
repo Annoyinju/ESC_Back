@@ -15,9 +15,9 @@ export async function startSession(c: Context, userId: number) {
         "HS256"
     );
     setCookie(c, "token", token, {
-        httpOnly: true,                                   // JS in the browser can't read it
-        secure: process.env.NODE_ENV === "production",    // HTTPS only in production
-        sameSite: "Lax",
+        httpOnly: true,                                   
+        secure: process.env.NODE_ENV === "production",    
+        sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
         maxAge: DAY,
         path: "/",
     });
