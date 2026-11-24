@@ -8,7 +8,8 @@
     "esModuleInterop": true,
     "isolatedModules": true,
     "erasableSyntaxOnly": true,
-    "customConditions": [ "fastly" ],
-    "types": [ "@fastly/js-compute" ],
-  }
+    "strict": true,
+    "types": ["node"]
+  },
+  "include": ["src"]
 }
