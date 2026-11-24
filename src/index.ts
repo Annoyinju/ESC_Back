@@ -19,4 +19,4 @@ app.onError((err, c) => {
     return c.json({ error: "Server error" }, 500);
 });
 
-serve({ fetch: app.fetch, port: 3000 }, () => console.log("API on http://localhost:3000"));
+serve({ fetch: app.fetch, port: Number(process.env.PORT) || 3000 }, (info) => console.log("API on ${info.port}"));
