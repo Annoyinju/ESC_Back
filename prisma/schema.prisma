@@ -18,6 +18,16 @@ enum Role {
   ADMIN
 }
 
+model Session {
+  id        String   @id            // random, unguessable
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
 model User {
   id    Int     @id @default(autoincrement())
   email String  @unique
@@ -26,6 +36,7 @@ model User {
   createdAt DateTime @default(now())
   drawings Drawing[]
   role Role @default(USER_NOAUTH)
+  sessions Session[]
 }
 
 model Drawing {
