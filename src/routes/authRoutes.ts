@@ -5,16 +5,33 @@ import { z } from "zod";
 import argon2 from "argon2";
 import { prisma } from "../db";
 import { startSession } from "../auth";
+import { requireAuth, type AuthEnv } from "../auth";
 
-const Credentials = z.object({
+
+const LoginBody = z.object({
     email: z.string().email(),
     password: z.string().min(8).max(200),
-    username: z.string().min(3).max(20)
 });
 
-export const authRoutes = new Hono();
+const RegisterBody = LoginBody.extend({
+    username: z.string().min(3).max(30),
+});
 
-authRoutes.post("/register", zValidator("json", Credentials), async (c) => {
+
+
+export const authRoutes = new Hono<AuthEnv>();
+
+
+authRoutes.get("/profile", requireAuth, async (c) => {
+    const user = await prisma.user.findUnique({
+        where: { id: c.get("userId") },
+        select: { id: true, email: true, username: true },
+    });
+    if (!user) return c.json({ error: "Not logged in" }, 401);
+    return c.json(user);
+});
+
+authRoutes.post("/register", zValidator("json", RegisterBody), async (c) => {
     const { email, username, password } = c.req.valid("json");
 
     if (await prisma.user.findUnique({ where: { email } })) {
@@ -25,10 +42,10 @@ authRoutes.post("/register", zValidator("json", Credentials), async (c) => {
         data: { email, username, password: await argon2.hash(password) },
     });
     await startSession(c, user.id);
-    return c.json({ id: user.id, email: user.email }, 201);
+    return c.json({ id: user.id, email: user.email, username: user.username }, 201);
 });
 
-authRoutes.post("/login", zValidator("json", Credentials), async (c) => {
+authRoutes.post("/login", zValidator("json", LoginBody), async (c) => {
     const { email, password } = c.req.valid("json");
 
     const user = await prisma.user.findUnique({ where: { email } });
@@ -38,7 +55,7 @@ authRoutes.post("/login", zValidator("json", Credentials), async (c) => {
     }
 
     await startSession(c, user.id);
-    return c.json({ id: user.id, email: user.email });
+    return c.json({ id: user.id, email: user.email, username: user.username });
 });
 
 authRoutes.post("/logout", (c) => {
