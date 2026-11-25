@@ -1,7 +1,6 @@
 {
   "name": "ESC_Backend",
   "type": "module",
-  
   "scripts": {
     "build": "prisma generate && prisma migrate deploy",
     "start": "tsx src/index.ts",
@@ -15,6 +14,7 @@
     "@supabase/supabase-js": "^2.119.2",
     "argon2": "^0.45.2",
     "dotenv": "^18.0.10",
+    "google-auth-library": "^11.3.4",
     "hono": "^4.13.16",
     "pg": "^8.23.1",
     "prisma": "7.10.1",

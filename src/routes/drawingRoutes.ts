@@ -6,6 +6,14 @@ import { supabase, BUCKET } from "../storage";
 
 const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
 
+// Returns null for "not provided / blank", a trimmed string for valid text,
+// and undefined when the value is invalid (wrong type or too long).
+function optionalText(value: unknown, max: number): string | null | undefined {
+    if (value === undefined) return null;
+    if (typeof value !== "string" || value.length > max) return undefined;
+    return value.trim() || null;
+}
+
 /* ---------- Public gallery (no login required) ---------- */
 
 export const exploreRoutes = new Hono();
@@ -23,6 +31,7 @@ exploreRoutes.get("/", async (c) => {
         select: {
             id: true,
             title: true,
+            desc: true,
             createdAt: true,
             imagePath: true,
             user: { select: { username: true } }, // never userId or email
@@ -42,6 +51,7 @@ exploreRoutes.get("/", async (c) => {
     const items = page.map((d, i) => ({
         id: d.id,
         title: d.title,
+        desc: d.desc,
         createdAt: d.createdAt,
         author: d.user.username,
         imageUrl: signed?.[i]?.signedUrl ?? null,
@@ -63,33 +73,29 @@ drawingRoutes.use("*", requireAuth);
 drawingRoutes.get("/", async (c) => {
     const drawings = await prisma.drawing.findMany({
         where: { userId: c.get("userId") },
-        select: { id: true, title: true, createdAt: true, isPublic: true },
+        select: { id: true, title: true, desc: true, createdAt: true, isPublic: true },
         orderBy: { createdAt: "desc" },
     });
     return c.json(drawings);
 });
 
-// Save a new drawing (multipart form: optional title + image + optional isPublic)
+// Save a new drawing (multipart form: image + optional title, desc, isPublic)
 drawingRoutes.post("/", async (c) => {
     const body = await c.req.parseBody();
-    const rawTitle = body["title"];
     const image = body["image"];
     const isPublic = body["isPublic"] === "true"; // anything else means private
 
-    // Title is optional: missing or blank means "no title"
-    let title: string | null = null;
-    if (rawTitle !== undefined) {
-        if (typeof rawTitle !== "string" || rawTitle.length > 100) {
-            return c.json({ error: "Title must be text of at most 100 characters" }, 400);
-        }
-        title = rawTitle.trim() || null;
+    const title = optionalText(body["title"], 100);
+    const desc = optionalText(body["desc"], 500);
+    if (title === undefined || desc === undefined) {
+        return c.json({ error: "Title (max 100) and description (max 500) must be text" }, 400);
     }
 
     if (!(image instanceof File) || image.type !== "image/png" || image.size > MAX_SIZE) {
         return c.json({ error: "Image must be a PNG under 10 MB" }, 400);
     }
 
-
+    // The server picks the storage key, never the client
     const imagePath = `${randomUUID()}.png`;
 
     const { error } = await supabase.storage
@@ -102,8 +108,8 @@ drawingRoutes.post("/", async (c) => {
 
     try {
         const drawing = await prisma.drawing.create({
-            data: { title, imagePath, isPublic, userId: c.get("userId") },
-            select: { id: true, title: true, createdAt: true, isPublic: true },
+            data: { title, desc, imagePath, isPublic, userId: c.get("userId") },
+            select: { id: true, title: true, desc: true, createdAt: true, isPublic: true },
         });
         return c.json(drawing, 201);
     } catch (e) {
@@ -113,7 +119,7 @@ drawingRoutes.post("/", async (c) => {
     }
 });
 
-
+// Publish or unpublish one of my drawings
 drawingRoutes.patch("/:id", async (c) => {
     const body = await c.req.json().catch(() => null);
     if (typeof body?.isPublic !== "boolean") {
@@ -154,4 +160,5 @@ drawingRoutes.delete("/:id", async (c) => {
 
     await prisma.drawing.delete({ where: { id: drawing.id } });
     await supabase.storage.from(BUCKET).remove([drawing.imagePath]);
-    return c.body(null, 204);})
+    return c.body(null, 204);
+});
