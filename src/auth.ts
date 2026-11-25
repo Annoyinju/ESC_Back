@@ -3,11 +3,12 @@ import { getCookie, setCookie } from "hono/cookie";
 import { randomBytes, createHash } from "node:crypto";
 import type { Context } from "hono";
 import { prisma } from "./db";
+import type { Role } from "./generated/prisma";
 
 const DAY = 60 * 60 * 24;
 const isProd = process.env.NODE_ENV === "production";
 
-export type AuthEnv = { Variables: { userId: number } };
+export type AuthEnv = { Variables: { userId: number; role: Role; } };
 
 export const sessionCookie = {
     httpOnly: true,
@@ -41,7 +42,10 @@ export const requireAuth = createMiddleware<AuthEnv>(async (c, next) => {
     if (!raw) return c.json({ error: "Not logged in" }, 401);
 
     const id = hashId(raw);
-    const session = await prisma.session.findUnique({ where: { id } });
+    const session = await prisma.session.findUnique({
+        where: { id },
+        include: { user: { select: { role: true } } },
+    });
     if (!session) return c.json({ error: "Invalid or expired session" }, 401);
 
     if (session.expiresAt < new Date()) {
@@ -50,5 +54,6 @@ export const requireAuth = createMiddleware<AuthEnv>(async (c, next) => {
     }
 
     c.set("userId", session.userId);
+    c.set("role", session.user.role);
     await next();
 });

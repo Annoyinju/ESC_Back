@@ -171,16 +171,20 @@ drawingRoutes.get("/:id/image", async (c) => {
     return c.body(await data.arrayBuffer(), 200, { "Content-Type": "image/png" });
 });
 
-// Delete a drawing
 drawingRoutes.delete("/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id)) return c.json({ error: "Invalid id" }, 400);
+
+    const isAdmin = c.get("role") === "ADMIN";
+
     const drawing = await prisma.drawing.findFirst({
-        where: { id: Number(c.req.param("id")), userId: c.get("userId") },
+        where: isAdmin ? { id } : { id, userId: c.get("userId") },
     });
     if (!drawing) return c.json({ error: "Not found" }, 404);
 
     await prisma.drawing.delete({ where: { id: drawing.id } });
     await supabase.storage
-    .from(BUCKET)
-    .remove([drawing.imagePath, ...(drawing.thumbPath ? [drawing.thumbPath] : [])]);
+        .from(BUCKET)
+        .remove([drawing.imagePath, ...(drawing.thumbPath ? [drawing.thumbPath] : [])]);
     return c.body(null, 204);
 });
