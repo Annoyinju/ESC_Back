@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { prisma } from "../db";
 import { requireAuth, type AuthEnv } from "../auth";
 import { supabase, BUCKET } from "../storage";
+import sharp from "sharp";
 
 const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
 
@@ -34,6 +35,7 @@ exploreRoutes.get("/", async (c) => {
             desc: true,
             createdAt: true,
             imagePath: true,
+            thumbPath: true,
             user: { select: { username: true } }, // never userId or email
         },
     });
@@ -45,7 +47,7 @@ exploreRoutes.get("/", async (c) => {
     const { data: signed } = page.length
         ? await supabase.storage
               .from(BUCKET)
-              .createSignedUrls(page.map((d) => d.imagePath), 60 * 60)
+              .createSignedUrls(page.map((d) => d.thumbPath ?? d.imagePath), 60 * 60)
         : { data: [] };
 
     const items = page.map((d, i) => ({
@@ -95,26 +97,44 @@ drawingRoutes.post("/", async (c) => {
         return c.json({ error: "Image must be a PNG under 10 MB" }, 400);
     }
 
-    // The server picks the storage key, never the client
-    const imagePath = `${randomUUID()}.png`;
+    
+        const original = Buffer.from(await image.arrayBuffer());
 
-    const { error } = await supabase.storage
-        .from(BUCKET)
-        .upload(imagePath, await image.arrayBuffer(), { contentType: "image/png" });
-    if (error) {
-        console.error("Storage upload failed:", error);
+   
+    let thumb: Buffer;
+    try {
+        thumb = await sharp(original)
+            .resize({ width: 480, height: 480, fit: "inside", withoutEnlargement: true })
+            .flatten({ background: "#ffffff" }) // transparent areas become white
+            .webp({ quality: 80 })
+            .toBuffer();
+    } catch {
+        return c.json({ error: "Could not read the image" }, 400);
+    }
+
+    const id = randomUUID();
+    const imagePath = `${id}.png`;
+    const thumbPath = `thumbs/${id}.webp`;
+
+    const up1 = await supabase.storage.from(BUCKET)
+        .upload(imagePath, original, { contentType: "image/png" });
+    const up2 = up1.error ? null : await supabase.storage.from(BUCKET)
+        .upload(thumbPath, thumb, { contentType: "image/webp" });
+
+    if (up1.error || up2?.error) {
+        console.error("Storage upload failed:", up1.error ?? up2?.error);
+        await supabase.storage.from(BUCKET).remove([imagePath, thumbPath]);
         return c.json({ error: "Upload failed" }, 500);
     }
 
     try {
         const drawing = await prisma.drawing.create({
-            data: { title, desc, imagePath, isPublic, userId: c.get("userId") },
+            data: { title, desc, imagePath, thumbPath, isPublic, userId: c.get("userId") },
             select: { id: true, title: true, desc: true, createdAt: true, isPublic: true },
         });
         return c.json(drawing, 201);
     } catch (e) {
-        // Don't leave an orphan file if the database insert fails
-        await supabase.storage.from(BUCKET).remove([imagePath]);
+        await supabase.storage.from(BUCKET).remove([imagePath, thumbPath]);
         throw e;
     }
 });
@@ -159,6 +179,8 @@ drawingRoutes.delete("/:id", async (c) => {
     if (!drawing) return c.json({ error: "Not found" }, 404);
 
     await prisma.drawing.delete({ where: { id: drawing.id } });
-    await supabase.storage.from(BUCKET).remove([drawing.imagePath]);
+    await supabase.storage
+    .from(BUCKET)
+    .remove([drawing.imagePath, ...(drawing.thumbPath ? [drawing.thumbPath] : [])]);
     return c.body(null, 204);
 });

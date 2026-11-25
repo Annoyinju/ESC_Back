@@ -49,6 +49,7 @@ model Drawing {
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id])
   userId    Int
+  thumbPath String?
 
   @@index([isPublic, createdAt])
 }
