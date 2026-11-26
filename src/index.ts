@@ -1,12 +1,21 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
-import { csrf } from "hono/csrf"
 import { authRoutes } from "./routes/authRoutes";
 import { drawingRoutes } from "./routes/drawingRoutes";
 import { exploreRoutes } from "./routes/drawingRoutes";
 import { adminRoutes } from "./routes/adminRoutes";
+import { cors } from "hono/cors";
+import { csrf } from "hono/csrf";
 
 const app = new Hono();
+
+app.use(
+    "/api/*",
+    cors({
+        origin: process.env.FRONTEND_URL!,   
+        credentials: true,
+    })
+);
 
 app.use("/api/*", csrf({ origin: process.env.FRONTEND_URL! }));
 
@@ -14,7 +23,7 @@ app.get("/api/health", (c) => c.json({ ok: true }));
 app.route("/api/auth", authRoutes);
 app.route("/api/drawings", drawingRoutes);
 app.route("/api/explore", exploreRoutes);
-app.route("api/admin", adminRoutes);
+app.route("/api/admin", adminRoutes);
 
 app.onError((err, c) => {
     console.error(err);
