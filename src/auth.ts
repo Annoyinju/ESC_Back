@@ -57,3 +57,9 @@ export const requireAuth = createMiddleware<AuthEnv>(async (c, next) => {
     c.set("role", session.user.role);
     await next();
 });
+
+export const requireRole = (...allowed: Role[]) =>
+    createMiddleware<AuthEnv>(async (c, next) => {
+        if (!allowed.includes(c.get("role"))) return c.json({ error: "Forbidden" }, 403);
+        await next();
+    });
