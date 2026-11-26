@@ -7,6 +7,7 @@ import { randomBytes } from "node:crypto";
 import { OAuth2Client } from "google-auth-library";
 import { prisma } from "../db";
 import { startSession, sessionCookie, requireAuth, hashId, type AuthEnv } from "../auth";
+import { createLimiter, clientIp } from "../rateLimit";
 
 const LoginBody = z.object({
     email: z.string().email(),
@@ -34,6 +35,10 @@ const PasswordBody = z.object({
 });
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+const FIFTEEN_MIN = 15 * 60 * 1000;
+const loginByIp = createLimiter(20, FIFTEEN_MIN);
+const loginByEmail = createLimiter(5, FIFTEEN_MIN);
 
 // Builds a free username from Google's display name
 async function uniqueUsername(base: string): Promise<string> {
@@ -129,13 +134,22 @@ authRoutes.post("/register", zValidator("json", RegisterBody), async (c) => {
 authRoutes.post("/login", zValidator("json", LoginBody), async (c) => {
     const { password } = c.req.valid("json");
     const email = c.req.valid("json").email.trim().toLowerCase();
+    const ip = clientIp(c);
+
+    const wait = Math.max(loginByIp.blocked(ip), loginByEmail.blocked(email));
+    if (wait) {
+        c.header("Retry-After", String(wait));
+        return c.json({ error: "Too many attempts. Try again in a few minutes." }, 429);
+    }
 
     const user = await prisma.user.findUnique({ where: { email } });
-    // Same message for "no such user", "wrong password" and "Google-only account"
     if (!user || !user.password || !(await argon2.verify(user.password, password))) {
+        loginByIp.hit(ip);
+        loginByEmail.hit(email);
         return c.json({ error: "Wrong email or password" }, 401);
     }
 
+    loginByEmail.reset(email); // a correct login clears that account's counter
     await startSession(c, user.id);
     return c.json({ id: user.id, email: user.email, username: user.username, role: user.role });
 });
